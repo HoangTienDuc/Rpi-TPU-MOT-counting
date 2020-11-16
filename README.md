@@ -2,4 +2,4 @@ OpenCV for TPU example from Google Coral examples (https://github.com/google-cor
 
 Deep Sort library (https://github.com/nwojke/deep_sort)
 
-Baseline object_tracker.py from (https://github.com/emasterclassacademy/Single-Multiple-Custom-Object-Detection-and-Tracking)
+Starting point object_tracker.py from (https://github.com/emasterclassacademy/Single-Multiple-Custom-Object-Detection-and-Tracking)

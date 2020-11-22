@@ -25,16 +25,36 @@ EDGETPU_SHARED_LIB = {
 }[platform.system()]
 
 def make_interpreter(model_file):
-    model_file, *device = model_file.split('@')
-    return tflite.Interpreter(
+  model_file, *device = model_file.split('@')
+  return tflite.Interpreter(
       model_path=model_file,
       experimental_delegates=[
           tflite.load_delegate(EDGETPU_SHARED_LIB,
                                {'device': device[0]} if device else {})
       ])
 
+# def set_batch_input(interpreter, images, resample=Image.NEAREST):
+#     """Transforms list of different sized images to input tensor --- no can do, edge tpu doesnt work like that"""
+#     reshaped_images = []  
+#     for image in images:
+#       if 0 in image.shape:
+#         continue
+#       iis_full = input_image_size(interpreter)
+#       print("iis full je ")
+#       print(iis_full)
+#       iis = iis_full[0:2]
+#       print("common set batch input take two {}".format(iis))
+
+#       reshaped_image = Image.fromarray(image).resize((iis), resample)
+#       reshaped_images.append(np.asarray(reshaped_image))
+#     reshaped_images = np.array(reshaped_images)
+#     print(reshaped_images.shape)
+#     #nezz jel moze ovak il moze sam jedna slika kao input...
+#     input_tensor(interpreter)[:, :] = reshaped_images
+
 def set_input(interpreter, image, resample=Image.NEAREST):
     """Copies data to input tensor."""
+
     image = image.resize((input_image_size(interpreter)[0:2]), resample)
     input_tensor(interpreter)[:, :] = image
 

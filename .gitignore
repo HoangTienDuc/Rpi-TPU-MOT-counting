@@ -1,3 +1,5 @@
 all_models/*
+data/
+data/.gitkeep
 !all_models/.gitkeep
 !all_models/feature_encoder*

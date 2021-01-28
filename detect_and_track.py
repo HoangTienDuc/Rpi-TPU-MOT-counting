@@ -41,6 +41,7 @@ from application_util import preprocessing
 from deep_sort import nn_matching
 from deep_sort.detection import Detection
 from deep_sort.tracker import Tracker
+from matplotlib import pyplot as plt
 
 Object = collections.namedtuple('Object', ['id', 'score', 'bbox'])
 
@@ -175,12 +176,8 @@ def process_objs(cv2_im, objs, labels):
         x0, y0, x1, y1 = list(obj.bbox)
         x0, y0, x1, y1 = int(x0*width), int(y0*height), int(x1*width), int(y1*height)
         percent = int(100 * obj.score)
-        label = '{}% {}'.format(percent, labels.get(obj.id, obj.id))
-        
-        #draw rectangle to the image
-        cv2_im = cv2.rectangle(cv2_im, (x0, y0), (x1, y1), (0, 255, 0), 2)
-        cv2_im = cv2.putText(cv2_im, label, (x0, y0+30),
-                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
+        if obj.id != 0:
+            continue
         
         #extract image from rectangle in seperate list
         if x0<x1:
@@ -224,7 +221,7 @@ def main():
     parser.add_argument('--threshold', type=float, default=0.25,
                         help='classifier score threshold')
     parser.add_argument('--headless', help='run the script without output display', action='store_true')
-    parser.add_argument('--video', help='use video instead of camera input')
+    parser.add_argument('--video', default="rtsp://admin:abcd1234@192.168.1.104:554/Streaming/Channels/101?transportmode=mcast&profile=Profile_1", help='use video instead of camera input')
     args = parser.parse_args()
 
     print('Loading {} with {} labels.'.format(args.model, args.labels))
@@ -236,19 +233,25 @@ def main():
 
     max_cosine_distance = 0.5
     nn_budget = None
+    metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
+    tracker = Tracker(metric)
+    
     nms_max_overlap = 0.8
 
     if args.video:
         cap = cv2.VideoCapture(args.video)
     else:
         cap = cv2.VideoCapture(args.camera_idx)
-    st = time.time()
+
     cnt = 0
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
         cnt += 1
+        if not cnt % 2:
+            continue
+
         cv2_im = frame
 
         cv2_im_rgb = cv2.cvtColor(cv2_im, cv2.COLOR_BGR2RGB)
@@ -260,8 +263,7 @@ def main():
         objs = get_output(interpreter, score_threshold=args.threshold, top_k=args.top_k)
 
         cv2_im, patches = process_objs(cv2_im, objs, labels)
-        if not args.headless:
-            cv2.imshow('frame', cv2_im)
+
         features = get_features(interpreter_features, patches)
 
         detections = [Detection(obj.bbox, obj.score, obj.id, feature) for obj, feature in
@@ -269,28 +271,33 @@ def main():
 
         boxs = np.array([d.tlwh for d in detections])
         scores = np.array([d.confidence for d in detections])
-        classes = np.array([d.class_name for d in detections])
-        indices = preprocessing.non_max_suppression(boxs, classes, nms_max_overlap, scores)
+        classes = np.array([d.cls for d in detections])
+        indices = preprocessing.non_max_suppression(boxs, nms_max_overlap, scores)
         detections = [detections[i] for i in indices]
         
         tracker.predict()
         tracker.update(detections)
 
-        cmap = plt.get_cmap('tab20b')
-        colors = [cmap(i)[:3] for i in np.linspace(0,1,20)]
+        for track in tracker.tracks:
+            if not track.is_confirmed() or track.time_since_update > 1:
+                continue
+            bbox = track.to_tlbr()
+            h, w = cv2_im.shape[:2]
 
-        current_count = int(0)
+            bbox[0] = bbox[0] * w
+            bbox[2] = bbox[2] * w - bbox[0]
+            bbox[1] = bbox[1] * h
+            bbox[3] = bbox[3] * h - bbox[1]
 
+            cv2.rectangle(cv2_im, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (255, 255, 255), 2)
+            cv2.putText(cv2_im, "ID: " + str(track.track_id), (int(bbox[0]), int(bbox[1])), 0,
+                        1.5e-3 * frame.shape[0], (0, 255, 0), 1)
 
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        cv2.imshow("cv2_im", cv2_im)
+        cv2.waitKey(10)
 
     cap.release()
     cv2.destroyAllWindows()
-
-    elapse = time.time()-st
-    print("average fps is {}".format(  elapse/cnt  ))
 
 if __name__ == '__main__':
     main()
